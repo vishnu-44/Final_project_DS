@@ -7,10 +7,14 @@ from sklearn.impute import SimpleImputer
 from sklearn.metrics import accuracy_score
 from sklearn.metrics import confusion_matrix
 from sklearn.metrics import f1_score
+from sklearn.metrics import mean_absolute_error
+from sklearn.metrics import mean_squared_error
 from sklearn.metrics import precision_score
 from sklearn.metrics import recall_score
+from sklearn.metrics import r2_score
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
+from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import OneHotEncoder
 
 
@@ -103,6 +107,21 @@ def get_numeric_summary(df):
         summary["mode"] = np.nan
     ordered = ["count", "mean", "median", "mode", "std", "min", "25%", "50%", "75%", "max"]
     return summary[ordered].round(4)
+
+
+def get_data_quality_summary(df):
+    rows = []
+    for column in df.columns:
+        rows.append(
+            {
+                "column": column,
+                "dtype": str(df[column].dtype),
+                "missing_values": int(df[column].isna().sum()),
+                "missing_pct": round(float(df[column].isna().mean() * 100), 2),
+                "unique_values": int(df[column].nunique(dropna=True)),
+            }
+        )
+    return pd.DataFrame(rows)
 
 
 def dataset_story(df):
@@ -283,3 +302,94 @@ def train_exposure_model(df):
     ).sort_values("importance", ascending=False)
 
     return metrics, importance_df.head(12)
+
+
+def train_salary_model(df):
+    model_df = df.copy()
+
+    feature_columns = [
+        "observed_exposure",
+        "JobFamily",
+        "major_group_title",
+        "isBright",
+        "isGreen",
+        "JobZoneLabel",
+        "JobForecast",
+        "ChanceAutoClean",
+        "WageGroup",
+    ]
+    target_column = "MedianSalaryAnnualized"
+
+    X = model_df[feature_columns]
+    y = model_df[target_column]
+
+    numeric_features = ["observed_exposure", "JobForecast", "ChanceAutoClean"]
+    categorical_features = ["JobFamily", "major_group_title", "JobZoneLabel", "WageGroup"]
+    boolean_features = ["isBright", "isGreen"]
+
+    preprocess = ColumnTransformer(
+        transformers=[
+            (
+                "num",
+                Pipeline([("imputer", SimpleImputer(strategy="median"))]),
+                numeric_features,
+            ),
+            (
+                "cat",
+                Pipeline(
+                    [
+                        ("imputer", SimpleImputer(strategy="most_frequent")),
+                        ("onehot", OneHotEncoder(handle_unknown="ignore")),
+                    ]
+                ),
+                categorical_features,
+            ),
+            ("bool", "passthrough", boolean_features),
+        ]
+    )
+
+    model = LinearRegression()
+    pipeline = Pipeline([("preprocess", preprocess), ("model", model)])
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.25, random_state=42
+    )
+
+    pipeline.fit(X_train, y_train)
+    pred = pipeline.predict(X_test)
+
+    rmse = float(np.sqrt(mean_squared_error(y_test, pred)))
+    metrics = {
+        "r2": float(r2_score(y_test, pred)),
+        "mae": float(mean_absolute_error(y_test, pred)),
+        "rmse": rmse,
+        "train_rows": int(len(X_train)),
+        "test_rows": int(len(X_test)),
+    }
+
+    feature_names = []
+    feature_names.extend(numeric_features)
+    onehot = pipeline.named_steps["preprocess"].named_transformers_["cat"].named_steps["onehot"]
+    if hasattr(onehot, "get_feature_names_out"):
+        cat_names = onehot.get_feature_names_out(categorical_features).tolist()
+    else:
+        cat_names = onehot.get_feature_names(categorical_features).tolist()
+    feature_names.extend(cat_names)
+    feature_names.extend(boolean_features)
+
+    coefficients = pipeline.named_steps["model"].coef_
+    coef_df = pd.DataFrame({"feature": feature_names, "coefficient": coefficients})
+    coef_df["abs_coefficient"] = coef_df["coefficient"].abs()
+    coef_df = coef_df.sort_values("abs_coefficient", ascending=False)
+
+    exposure_coef = coef_df.loc[coef_df["feature"] == "observed_exposure", "coefficient"]
+    exposure_coef_value = float(exposure_coef.iloc[0]) if not exposure_coef.empty else None
+
+    interpretation = None
+    if exposure_coef_value is not None:
+        interpretation = (
+            "In this linear model, a 0.1 increase in observed exposure is associated with an "
+            "estimated ${:,.0f} change in annualized salary, holding the other included features constant."
+        ).format(exposure_coef_value * 0.1)
+
+    return metrics, coef_df.drop(columns=["abs_coefficient"]).head(15), exposure_coef_value, interpretation

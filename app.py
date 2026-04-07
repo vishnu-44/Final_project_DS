@@ -6,9 +6,11 @@ import streamlit as st
 
 from src.occupation_analysis import build_occupation_dataset
 from src.occupation_analysis import dataset_story
+from src.occupation_analysis import get_data_quality_summary
 from src.occupation_analysis import get_numeric_summary
 from src.occupation_analysis import run_t_test
 from src.occupation_analysis import train_exposure_model
+from src.occupation_analysis import train_salary_model
 
 
 PLOT_TEMPLATE = "plotly_white"
@@ -34,6 +36,11 @@ def load_dataset(base_dir):
 @st.cache_data
 def get_model_outputs(df):
     return train_exposure_model(df)
+
+
+@st.cache_data
+def get_salary_model_outputs(df):
+    return train_salary_model(df)
 
 
 st.title("Occupation-Level AI Exposure Dashboard")
@@ -113,9 +120,17 @@ i3.info(
 with st.expander("Preview merged dataset", expanded=False):
     st.dataframe(filtered_df.head(25), use_container_width=True)
 
-tabs = st.tabs(["EDA", "Hypothesis Test", "Machine Learning", "Summary Stats"])
+tabs = st.tabs(["Data & EDA", "Hypothesis Test", "Machine Learning"])
 
 with tabs[0]:
+    st.markdown("**Data validation and summary**")
+    validation_left, validation_right = st.columns(2)
+    with validation_left:
+        st.dataframe(get_data_quality_summary(filtered_df), use_container_width=True, height=320)
+    with validation_right:
+        st.dataframe(get_numeric_summary(filtered_df), use_container_width=True, height=320)
+
+    st.markdown("**Exploratory Data Analysis**")
     top_left, top_right = st.columns(2)
     with top_left:
         family_exposure = (
@@ -280,7 +295,7 @@ with tabs[1]:
     st.plotly_chart(compare_fig, use_container_width=True)
 
 with tabs[2]:
-    st.markdown("**Model objective:** predict whether an occupation has positive observed AI exposure.")
+    st.markdown("**ML model 1: classify whether an occupation has positive observed AI exposure**")
     metrics, importance_df = get_model_outputs(df)
 
     ml1, ml2, ml3, ml4 = st.columns(4)
@@ -293,23 +308,56 @@ with tabs[2]:
     split1.metric("Training Rows", metric_value(metrics.get("train_rows"), 0))
     split2.metric("Test Rows", metric_value(metrics.get("test_rows"), 0))
 
-    ml_left, ml_right = st.columns(2)
-    with ml_left:
+    class_left, class_right = st.columns(2)
+    with class_left:
         st.markdown("**Confusion Matrix**")
         st.dataframe(metrics.get("confusion_matrix"), use_container_width=True)
 
-    with ml_right:
+    with class_right:
         importance_fig = px.bar(
             importance_df.sort_values("importance"),
             x="importance",
             y="feature",
             orientation="h",
             color="importance",
-            title="Top model features",
+            title="Top exposure-classification features",
             template=PLOT_TEMPLATE,
             color_continuous_scale="OrRd",
         )
         st.plotly_chart(importance_fig, use_container_width=True)
 
-with tabs[3]:
-    st.dataframe(get_numeric_summary(filtered_df), use_container_width=True)
+    st.markdown("**ML model 2: predict annualized salary with linear regression**")
+    salary_metrics, coef_df, exposure_coef, salary_interpretation = get_salary_model_outputs(df)
+
+    reg1, reg2, reg3 = st.columns(3)
+    reg1.metric("R²", metric_value(salary_metrics.get("r2"), 3))
+    reg2.metric("MAE", "${}".format(metric_value(salary_metrics.get("mae"), 0)))
+    reg3.metric("RMSE", "${}".format(metric_value(salary_metrics.get("rmse"), 0)))
+
+    reg_left, reg_right = st.columns(2)
+    with reg_left:
+        st.markdown("**Largest salary-model coefficients**")
+        st.dataframe(coef_df, use_container_width=True)
+
+    with reg_right:
+        coef_chart_df = coef_df.head(12).copy().sort_values("coefficient")
+        coef_fig = px.bar(
+            coef_chart_df,
+            x="coefficient",
+            y="feature",
+            orientation="h",
+            color="coefficient",
+            title="Top salary-model coefficients",
+            template=PLOT_TEMPLATE,
+            color_continuous_scale="RdBu",
+        )
+        st.plotly_chart(coef_fig, use_container_width=True)
+
+    exposure_text = (
+        "${:,.0f}".format(exposure_coef) if exposure_coef is not None else "N/A"
+    )
+    st.markdown(
+        "**Observed exposure coefficient:** {}".format(exposure_text)
+    )
+    if salary_interpretation:
+        st.info(salary_interpretation)

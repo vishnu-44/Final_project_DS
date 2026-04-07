@@ -10,6 +10,7 @@ The project asks a simple question:
 
 The app supports:
 
+- data validation and summary statistics
 - exploratory data analysis
 - hypothesis testing
 - machine learning
@@ -49,6 +50,7 @@ This produces a merged dataset with:
 
 ### EDA
 
+- data quality table and summary statistics
 - average AI exposure by job family
 - top major occupation groups by exposure
 - salary vs observed exposure
@@ -68,11 +70,18 @@ Research question:
 
 ### Machine Learning
 
-Classification model:
+Model 1: classification
 
 - target: whether an occupation has positive AI exposure
 - model: `RandomForestClassifier`
 - features: job family, major group, bright outlook, green-job flag, job zone, salary, job forecast, automation chance, and wage group
+
+Model 2: regression
+
+- target: `MedianSalaryAnnualized`
+- model: `LinearRegression`
+- includes `observed_exposure` as a direct predictor
+- used to interpret how AI exposure is associated with salary after accounting for the other included variables
 
 ## Repository Structure
 
