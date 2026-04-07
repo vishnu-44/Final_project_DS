@@ -120,7 +120,15 @@ i3.info(
 with st.expander("Preview merged dataset", expanded=False):
     st.dataframe(filtered_df.head(25), use_container_width=True)
 
-tabs = st.tabs(["Data & EDA", "Hypothesis Test", "Machine Learning"])
+tabs = st.tabs(
+    [
+        "Summary",
+        "EDA",
+        "Hypothesis Test",
+        "ML: Exposure Classification",
+        "ML: Salary Regression",
+    ]
+)
 
 with tabs[0]:
     st.markdown("**Data validation and summary**")
@@ -130,6 +138,41 @@ with tabs[0]:
     with validation_right:
         st.dataframe(get_numeric_summary(filtered_df), use_container_width=True, height=320)
 
+    summary_left, summary_right = st.columns(2)
+    with summary_left:
+        exposure_counts = filtered_df["ExposureGroup"].value_counts().reset_index()
+        exposure_counts.columns = ["ExposureGroup", "Count"]
+        summary_fig = px.bar(
+            exposure_counts,
+            x="ExposureGroup",
+            y="Count",
+            color="ExposureGroup",
+            title="Exposure group counts",
+            template=PLOT_TEMPLATE,
+        )
+        st.plotly_chart(summary_fig, use_container_width=True)
+
+    with summary_right:
+        family_preview = (
+            filtered_df.groupby("JobFamily")["observed_exposure"]
+            .mean()
+            .sort_values(ascending=False)
+            .reset_index()
+            .head(10)
+        )
+        family_preview_fig = px.bar(
+            family_preview.sort_values("observed_exposure"),
+            x="observed_exposure",
+            y="JobFamily",
+            orientation="h",
+            color="observed_exposure",
+            title="Top 10 job families by average exposure",
+            template=PLOT_TEMPLATE,
+            color_continuous_scale="Tealgrn",
+        )
+        st.plotly_chart(family_preview_fig, use_container_width=True)
+
+with tabs[1]:
     st.markdown("**Exploratory Data Analysis**")
     top_left, top_right = st.columns(2)
     with top_left:
@@ -243,7 +286,7 @@ with tabs[0]:
         st.markdown("**Example low- or zero-exposure occupations**")
         st.dataframe(zero_exposed, use_container_width=True)
 
-with tabs[1]:
+with tabs[2]:
     st.markdown(
         "**Research question:** Do occupations with positive observed AI exposure have a different mean annualized salary than occupations with no observed AI exposure?"
     )
@@ -294,7 +337,7 @@ with tabs[1]:
     )
     st.plotly_chart(compare_fig, use_container_width=True)
 
-with tabs[2]:
+with tabs[3]:
     st.markdown("**ML model 1: classify whether an occupation has positive observed AI exposure**")
     metrics, importance_df = get_model_outputs(df)
 
@@ -326,6 +369,7 @@ with tabs[2]:
         )
         st.plotly_chart(importance_fig, use_container_width=True)
 
+with tabs[4]:
     st.markdown("**ML model 2: predict annualized salary with linear regression**")
     salary_metrics, coef_df, exposure_coef, salary_interpretation = get_salary_model_outputs(df)
 
