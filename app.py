@@ -371,7 +371,13 @@ with tabs[3]:
 
 with tabs[4]:
     st.markdown("**ML model 2: predict annualized salary with linear regression**")
-    salary_metrics, coef_df, exposure_coef, salary_interpretation = get_salary_model_outputs(df)
+    (
+        salary_metrics,
+        coef_df,
+        exposure_coef,
+        exposure_pvalue,
+        salary_interpretation,
+    ) = get_salary_model_outputs(df)
 
     reg1, reg2, reg3 = st.columns(3)
     reg1.metric("R²", metric_value(salary_metrics.get("r2"), 3))
@@ -380,7 +386,7 @@ with tabs[4]:
 
     reg_left, reg_right = st.columns(2)
     with reg_left:
-        st.markdown("**Largest salary-model coefficients**")
+        st.markdown("**Largest salary-model coefficients with p-values**")
         st.dataframe(coef_df, use_container_width=True)
 
     with reg_right:
@@ -400,8 +406,12 @@ with tabs[4]:
     exposure_text = (
         "${:,.0f}".format(exposure_coef) if exposure_coef is not None else "N/A"
     )
+    exposure_p_text = metric_value(exposure_pvalue, 4) if exposure_pvalue is not None else "N/A"
     st.markdown(
         "**Observed exposure coefficient:** {}".format(exposure_text)
+    )
+    st.markdown(
+        "**Observed exposure p-value:** {}".format(exposure_p_text)
     )
     if salary_interpretation:
         st.info(salary_interpretation)

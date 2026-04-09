@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 from scipy import stats
+import statsmodels.api as sm
 from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.impute import SimpleImputer
@@ -382,8 +383,22 @@ def train_salary_model(df):
     coef_df["abs_coefficient"] = coef_df["coefficient"].abs()
     coef_df = coef_df.sort_values("abs_coefficient", ascending=False)
 
+    # Fit an OLS model on the transformed full dataset to get coefficient p-values.
+    X_full_transformed = pipeline.named_steps["preprocess"].fit_transform(X)
+    if hasattr(X_full_transformed, "toarray"):
+        X_full_transformed = X_full_transformed.toarray()
+    X_full_transformed = pd.DataFrame(X_full_transformed, columns=feature_names)
+    X_full_transformed = sm.add_constant(X_full_transformed, has_constant="add")
+    ols_model = sm.OLS(y, X_full_transformed).fit()
+
+    pvalue_map = ols_model.pvalues.to_dict()
+    coef_df["p_value"] = coef_df["feature"].map(pvalue_map)
+    coef_df["significant_0_05"] = coef_df["p_value"] < 0.05
+
     exposure_coef = coef_df.loc[coef_df["feature"] == "observed_exposure", "coefficient"]
     exposure_coef_value = float(exposure_coef.iloc[0]) if not exposure_coef.empty else None
+    exposure_pvalue = coef_df.loc[coef_df["feature"] == "observed_exposure", "p_value"]
+    exposure_pvalue_value = float(exposure_pvalue.iloc[0]) if not exposure_pvalue.empty else None
 
     interpretation = None
     if exposure_coef_value is not None:
@@ -391,5 +406,16 @@ def train_salary_model(df):
             "In this linear model, a 0.1 increase in observed exposure is associated with an "
             "estimated ${:,.0f} change in annualized salary, holding the other included features constant."
         ).format(exposure_coef_value * 0.1)
+        if exposure_pvalue_value is not None:
+            if exposure_pvalue_value < 0.05:
+                interpretation += " The exposure coefficient is statistically significant at the 0.05 level."
+            else:
+                interpretation += " The exposure coefficient is not statistically significant at the 0.05 level."
 
-    return metrics, coef_df.drop(columns=["abs_coefficient"]).head(15), exposure_coef_value, interpretation
+    return (
+        metrics,
+        coef_df.drop(columns=["abs_coefficient"]).head(15),
+        exposure_coef_value,
+        exposure_pvalue_value,
+        interpretation,
+    )

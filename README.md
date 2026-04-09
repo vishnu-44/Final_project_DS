@@ -82,6 +82,7 @@ Model 2: regression
 - model: `LinearRegression`
 - includes `observed_exposure` as a direct predictor
 - used to interpret how AI exposure is associated with salary after accounting for the other included variables
+- includes coefficient p-values from an OLS fit for significance-based interpretation
 
 ## Repository Structure
 
