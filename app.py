@@ -367,7 +367,6 @@ with tabs[2]:
         [
             {"check": "Shapiro p-value (No Exposure)", "value": test_results.get("normality_no")},
             {"check": "Shapiro p-value (Positive Exposure)", "value": test_results.get("normality_pos")},
-            {"check": "Levene p-value", "value": test_results.get("variance_p")},
         ]
     )
     st.dataframe(assumptions, use_container_width=True)
@@ -423,7 +422,6 @@ with tabs[2]:
         [
             {"check": "Shapiro p-value (No Exposure)", "value": auto_test_results.get("normality_no")},
             {"check": "Shapiro p-value (Positive Exposure)", "value": auto_test_results.get("normality_pos")},
-            {"check": "Levene p-value", "value": auto_test_results.get("variance_p")},
         ]
     )
     st.dataframe(auto_assumptions, use_container_width=True)
