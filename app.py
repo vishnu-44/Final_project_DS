@@ -60,6 +60,14 @@ def metric_value(value, decimals=3):
     return "{:,}".format(value)
 
 
+def format_p_value(value, threshold=0.001):
+    if value is None or pd.isna(value):
+        return "N/A"
+    if value < threshold:
+        return "{:.2e}".format(value)
+    return "{:.4f}".format(value)
+
+
 def render_profile_card(label, value):
     display_value = value if value not in [None, ""] else "N/A"
     st.markdown(
@@ -431,7 +439,7 @@ with tabs[2]:
     h1.metric("Mean No Exposure", "${}".format(metric_value(test_results.get("mean_no"), 0)))
     h2.metric("Mean Positive Exposure", "${}".format(metric_value(test_results.get("mean_pos"), 0)))
     h3.metric("t-statistic", metric_value(test_results.get("t_stat"), 4))
-    h4.metric("p-value", metric_value(test_results.get("p_value"), 4))
+    h4.metric("p-value", format_p_value(test_results.get("p_value")))
 
     s1, s2, s3 = st.columns(3)
     s1.metric("No Exposure n", metric_value(test_results.get("n_no"), 0))
@@ -486,7 +494,7 @@ with tabs[2]:
     a1.metric("Mean No Exposure", metric_value(auto_test_results.get("mean_no"), 2))
     a2.metric("Mean Positive Exposure", metric_value(auto_test_results.get("mean_pos"), 2))
     a3.metric("t-statistic", metric_value(auto_test_results.get("t_stat"), 4))
-    a4.metric("p-value", metric_value(auto_test_results.get("p_value"), 4))
+    a4.metric("p-value", format_p_value(auto_test_results.get("p_value")))
 
     b1, b2, b3 = st.columns(3)
     b1.metric("No Exposure n", metric_value(auto_test_results.get("n_no"), 0))
