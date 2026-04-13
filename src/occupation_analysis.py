@@ -478,16 +478,30 @@ def percentile_score(series, value):
     return float((clean <= float(value)).mean() * 100)
 
 
-def classify_career_profile(disruption_score, opportunity_score, exposure_score):
+def classify_career_profile(
+    disruption_score,
+    opportunity_score,
+    exposure_score,
+    raw_exposure,
+    automation_score,
+):
     if disruption_score is None or opportunity_score is None:
         return "Profile unavailable"
+
+    if raw_exposure is None or pd.isna(raw_exposure) or raw_exposure <= 0:
+        if automation_score is not None and automation_score >= 70:
+            return "Higher automation risk"
+        if automation_score is not None and automation_score >= 45:
+            return "Automation pressure"
+        return "Lower AI pressure"
+
     if disruption_score >= 70 and opportunity_score < 45:
         return "Higher automation risk"
     if disruption_score >= 55 and opportunity_score >= 45:
-        return "AI reshaping with mixed outlook"
+        return "AI reshaping"
     if exposure_score is not None and exposure_score >= 50:
-        return "AI augmented opportunity"
-    return "Lower near-term AI pressure"
+        return "AI opportunity"
+    return "Lower AI pressure"
 
 
 def build_career_profile(df, occupation_title):
@@ -497,7 +511,14 @@ def build_career_profile(df, occupation_title):
 
     row = row.iloc[0]
 
-    exposure_score = percentile_score(df["observed_exposure"], row["observed_exposure"])
+    raw_exposure = row["observed_exposure"]
+    if pd.notna(raw_exposure) and float(raw_exposure) <= 0:
+        exposure_score = 0.0
+    else:
+        exposure_score = percentile_score(
+            df.loc[df["observed_exposure"] > 0, "observed_exposure"],
+            raw_exposure,
+        )
     automation_score = percentile_score(df["ChanceAutoClean"], row["ChanceAutoClean"])
     salary_score = percentile_score(df["MedianSalaryAnnualized"], row["MedianSalaryAnnualized"])
     outlook_score = percentile_score(df["JobForecast"], row["JobForecast"])
@@ -511,7 +532,13 @@ def build_career_profile(df, occupation_title):
     if salary_score is not None and outlook_score is not None:
         opportunity_score = float(0.4 * salary_score + 0.35 * outlook_score + 0.25 * bright_score)
 
-    profile_label = classify_career_profile(disruption_score, opportunity_score, exposure_score)
+    profile_label = classify_career_profile(
+        disruption_score,
+        opportunity_score,
+        exposure_score,
+        raw_exposure,
+        automation_score,
+    )
 
     score_rows = [
         {"score_type": "AI exposure", "score": exposure_score},
@@ -524,7 +551,9 @@ def build_career_profile(df, occupation_title):
     score_df = pd.DataFrame(score_rows)
 
     narrative = []
-    if exposure_score is not None:
+    if raw_exposure is not None and not pd.isna(raw_exposure) and float(raw_exposure) <= 0:
+        narrative.append("This occupation has no observed AI exposure in the dataset.")
+    elif exposure_score is not None:
         if exposure_score >= 75:
             narrative.append("This occupation sits in the high end of AI exposure in the dataset.")
         elif exposure_score >= 40:
@@ -563,3 +592,56 @@ def build_career_profile(df, occupation_title):
         "score_df": score_df,
         "narrative": narrative,
     }
+
+
+def get_transition_options(df, occupation_title, limit=3):
+    row = df.loc[df["title"] == occupation_title].head(1)
+    if row.empty:
+        return []
+
+    row = row.iloc[0]
+    family_matches = df[
+        (df["JobFamily"] == row["JobFamily"])
+        & (df["title"] != row["title"])
+        & (df["ChanceAutoClean"].notna())
+        & (df["MedianSalaryAnnualized"].notna())
+    ].copy()
+
+    if family_matches.empty:
+        return []
+
+    current_auto = row["ChanceAutoClean"] if pd.notna(row["ChanceAutoClean"]) else np.inf
+    current_salary = row["MedianSalaryAnnualized"] if pd.notna(row["MedianSalaryAnnualized"]) else -np.inf
+
+    family_matches["improvement_score"] = 0.0
+    family_matches["improvement_score"] += (current_auto - family_matches["ChanceAutoClean"]).clip(lower=0)
+    family_matches["improvement_score"] += (
+        (family_matches["MedianSalaryAnnualized"] - current_salary) / 1000.0
+    ).clip(lower=0)
+    family_matches["improvement_score"] += (
+        family_matches["JobForecast"].fillna(0) / 10000.0
+    )
+
+    ranked = family_matches.sort_values(
+        ["improvement_score", "MedianSalaryAnnualized"],
+        ascending=[False, False],
+    ).head(limit)
+
+    options = []
+    for _, match in ranked.iterrows():
+        options.append(
+            {
+                "title": match["title"],
+                "job_family": match["JobFamily"],
+                "automation_chance": float(match["ChanceAutoClean"])
+                if pd.notna(match["ChanceAutoClean"])
+                else None,
+                "salary": float(match["MedianSalaryAnnualized"])
+                if pd.notna(match["MedianSalaryAnnualized"])
+                else None,
+                "job_zone": match["JobZoneLabel"],
+                "bright_outlook": match["BrightLabel"],
+            }
+        )
+
+    return options

@@ -133,6 +133,19 @@ This downloads:
 streamlit run app.py
 ```
 
+### Optional OpenAI powered automation assessment
+
+The Career Insight tab includes an optional OpenAI call that generates an LLM adjusted automation score, a short explanation, and nearby transition advice for the selected occupation.
+
+Set your API key in the shell before starting Streamlit:
+
+```bash
+export OPENAI_API_KEY="your_api_key_here"
+streamlit run app.py
+```
+
+The app reads the key from the `OPENAI_API_KEY` environment variable. The raw dataset automation score remains visible, and the LLM assessment is generated only when you click the button in the Career Insight tab.
+
 ## Data Sources
 
 - Anthropic Economic Index repository:

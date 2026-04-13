@@ -1,4 +1,5 @@
 import os
+import json
 
 import pandas as pd
 import plotly.express as px
@@ -9,6 +10,7 @@ from src.occupation_analysis import build_career_profile
 from src.occupation_analysis import dataset_story
 from src.occupation_analysis import get_data_quality_summary
 from src.occupation_analysis import get_numeric_summary
+from src.occupation_analysis import get_transition_options
 from src.occupation_analysis import run_group_t_test
 from src.occupation_analysis import run_t_test
 from src.occupation_analysis import train_exposure_model
@@ -69,6 +71,79 @@ def render_profile_card(label, value):
         """.format(label, display_value),
         unsafe_allow_html=True,
     )
+
+
+def generate_llm_automation_assessment(profile, transition_options, model_name):
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        return None, "OPENAI_API_KEY is not set in the environment."
+
+    try:
+        from openai import OpenAI
+    except ImportError:
+        return None, "The OpenAI SDK is not installed. Run `pip install -r requirements.txt`."
+
+    system_prompt = """
+You are an occupational risk analyst. Your job is to produce a careful automation-risk assessment for a single occupation using only the structured data provided to you.
+
+Use the raw automation score as the primary anchor. If the raw score seems inconsistent with the rest of the occupation profile, you may adjust it, but you must explain why. Do not ignore the source value. Treat observed AI exposure and automation risk as different concepts.
+
+Rules:
+1. The raw automation score is the baseline.
+2. If you adjust it, keep the adjustment reasonable and explicitly justified from the input.
+3. Low observed AI exposure does not automatically mean low automation risk.
+4. Bright outlook and stronger forecast can soften the recommendation, but do not erase a very high automation score.
+5. Higher job zone and stronger salary can indicate some resilience.
+6. Return valid JSON only.
+
+Return JSON with exactly these keys:
+{
+  "llm_automation_score": number,
+  "risk_band": "Lower" | "Moderate" | "High" | "Very High",
+  "short_explanation": string,
+  "career_advice": string,
+  "nearby_transition_direction": string
+}
+"""
+
+    payload = {
+        "occupation": profile["title"],
+        "job_family": profile["job_family"],
+        "major_group_title": profile["major_group_title"],
+        "observed_exposure": profile["observed_exposure"],
+        "raw_automation_score": profile["automation_chance"],
+        "annualized_salary": profile["salary"],
+        "job_zone": profile["job_zone_label"],
+        "bright_outlook": profile["bright_label"],
+        "green_flag": profile["green_label"],
+        "job_forecast": profile["forecast"],
+        "transition_options": transition_options,
+    }
+
+    client = OpenAI(api_key=api_key)
+    response = client.responses.create(
+        model=model_name,
+        input=[
+            {"role": "system", "content": system_prompt},
+            {
+                "role": "user",
+                "content": "Assess this occupation and return JSON only:\n{}".format(
+                    json.dumps(payload, indent=2)
+                ),
+            },
+        ],
+    )
+
+    raw_text = getattr(response, "output_text", None)
+    if not raw_text:
+        return None, "The OpenAI response did not include output_text."
+
+    try:
+        data = json.loads(raw_text)
+    except json.JSONDecodeError:
+        return None, "The OpenAI response was not valid JSON."
+
+    return data, None
 
 
 @st.cache_data
@@ -537,6 +612,7 @@ with tabs[5]:
     selected_title = st.selectbox("Select an occupation", occupation_options, index=default_index)
 
     profile = build_career_profile(df, selected_title)
+    transition_options = get_transition_options(df, selected_title)
     if profile is None:
         st.warning("Could not build a profile for the selected occupation.")
     else:
@@ -585,6 +661,48 @@ with tabs[5]:
         st.markdown(
             "**Interpretation:** This profile combines AI exposure and automation chance into an `AI disruption` score, and combines salary, forecast, and bright-outlook status into a `Career opportunity` score."
         )
+
+        st.markdown("**Optional LLM automation assessment**")
+        st.caption(
+            "This call uses the selected occupation data and nearby transition options to generate an LLM adjusted automation score and a short advisory note."
+        )
+        llm_model = st.text_input(
+            "OpenAI model",
+            value="gpt-5-mini",
+            help="Change this if your account uses a different model name.",
+            key="llm_model_name",
+        )
+        if st.button("Generate LLM automation assessment", key="llm_assessment_button"):
+            with st.spinner("Calling OpenAI..."):
+                llm_result, llm_error = generate_llm_automation_assessment(
+                    profile,
+                    transition_options,
+                    llm_model,
+                )
+            if llm_error:
+                st.error(llm_error)
+            else:
+                l1, l2 = st.columns(2)
+                with l1:
+                    render_profile_card(
+                        "LLM Automation Score",
+                        metric_value(llm_result.get("llm_automation_score"), 1),
+                    )
+                with l2:
+                    render_profile_card("LLM Risk Band", llm_result.get("risk_band"))
+
+                st.markdown("**LLM explanation**")
+                st.write(llm_result.get("short_explanation", "N/A"))
+
+                st.markdown("**Career advice**")
+                st.write(llm_result.get("career_advice", "N/A"))
+
+                st.markdown("**Nearby transition direction**")
+                st.write(llm_result.get("nearby_transition_direction", "N/A"))
+
+                if transition_options:
+                    st.markdown("**Nearby transition options from the dataset**")
+                    st.dataframe(pd.DataFrame(transition_options), use_container_width=True)
 
 with tabs[6]:
     st.markdown("**Definitions used across the project**")
