@@ -221,6 +221,56 @@ def run_t_test(df):
     return results
 
 
+def run_group_t_test(df, value_column, question_label):
+    subset = df[["ExposureGroup", value_column]].dropna()
+    no_exp = subset.loc[subset["ExposureGroup"] == "No Exposure", value_column].astype(float).values
+    pos_exp = subset.loc[
+        subset["ExposureGroup"] == "Positive Exposure", value_column
+    ].astype(float).values
+
+    results = {
+        "question": question_label,
+        "value_column": value_column,
+        "mean_no": float(np.mean(no_exp)) if len(no_exp) else None,
+        "mean_pos": float(np.mean(pos_exp)) if len(pos_exp) else None,
+        "n_no": int(len(no_exp)),
+        "n_pos": int(len(pos_exp)),
+        "normality_no": None,
+        "normality_pos": None,
+        "variance_p": None,
+        "t_stat": None,
+        "p_value": None,
+        "effect_size": None,
+        "interpretation": "Not enough data to run the t-test.",
+    }
+
+    if len(no_exp) < 2 or len(pos_exp) < 2:
+        return results
+
+    results["normality_no"] = safe_shapiro(no_exp)
+    results["normality_pos"] = safe_shapiro(pos_exp)
+    results["variance_p"] = float(stats.levene(no_exp, pos_exp)[1])
+
+    equal_var = results["variance_p"] is not None and results["variance_p"] >= 0.05
+    t_stat, p_value = stats.ttest_ind(no_exp, pos_exp, equal_var=equal_var)
+    results["t_stat"] = float(t_stat)
+    results["p_value"] = float(p_value)
+    results["effect_size"] = cohen_d(no_exp, pos_exp)
+
+    if p_value < 0.05:
+        results["interpretation"] = (
+            "Occupations with positive observed AI exposure have a statistically different "
+            "mean value for {} than occupations with no observed AI exposure."
+        ).format(question_label.lower())
+    else:
+        results["interpretation"] = (
+            "There is not enough evidence to conclude that positive-exposure and no-exposure "
+            "occupations differ in mean {}."
+        ).format(question_label.lower())
+
+    return results
+
+
 def train_exposure_model(df):
     model_df = df.copy()
     model_df["has_positive_exposure"] = (model_df["observed_exposure"] > 0).astype(int)
@@ -419,3 +469,97 @@ def train_salary_model(df):
         exposure_pvalue_value,
         interpretation,
     )
+
+
+def percentile_score(series, value):
+    clean = series.dropna().astype(float)
+    if clean.empty or value is None or pd.isna(value):
+        return None
+    return float((clean <= float(value)).mean() * 100)
+
+
+def classify_career_profile(disruption_score, opportunity_score, exposure_score):
+    if disruption_score is None or opportunity_score is None:
+        return "Profile unavailable"
+    if disruption_score >= 70 and opportunity_score < 45:
+        return "Higher automation risk"
+    if disruption_score >= 55 and opportunity_score >= 45:
+        return "AI reshaping with mixed outlook"
+    if exposure_score is not None and exposure_score >= 50:
+        return "AI augmented opportunity"
+    return "Lower near-term AI pressure"
+
+
+def build_career_profile(df, occupation_title):
+    row = df.loc[df["title"] == occupation_title].head(1)
+    if row.empty:
+        return None
+
+    row = row.iloc[0]
+
+    exposure_score = percentile_score(df["observed_exposure"], row["observed_exposure"])
+    automation_score = percentile_score(df["ChanceAutoClean"], row["ChanceAutoClean"])
+    salary_score = percentile_score(df["MedianSalaryAnnualized"], row["MedianSalaryAnnualized"])
+    outlook_score = percentile_score(df["JobForecast"], row["JobForecast"])
+    bright_score = 100.0 if bool(row["isBright"]) else 0.0
+
+    disruption_score = None
+    if exposure_score is not None and automation_score is not None:
+        disruption_score = float(0.45 * exposure_score + 0.55 * automation_score)
+
+    opportunity_score = None
+    if salary_score is not None and outlook_score is not None:
+        opportunity_score = float(0.4 * salary_score + 0.35 * outlook_score + 0.25 * bright_score)
+
+    profile_label = classify_career_profile(disruption_score, opportunity_score, exposure_score)
+
+    score_rows = [
+        {"score_type": "AI exposure", "score": exposure_score},
+        {"score_type": "Automation risk", "score": automation_score},
+        {"score_type": "Salary strength", "score": salary_score},
+        {"score_type": "Outlook strength", "score": outlook_score},
+        {"score_type": "Career opportunity", "score": opportunity_score},
+        {"score_type": "AI disruption", "score": disruption_score},
+    ]
+    score_df = pd.DataFrame(score_rows)
+
+    narrative = []
+    if exposure_score is not None:
+        if exposure_score >= 75:
+            narrative.append("This occupation sits in the high end of AI exposure in the dataset.")
+        elif exposure_score >= 40:
+            narrative.append("This occupation shows a moderate level of AI exposure.")
+        else:
+            narrative.append("This occupation shows relatively low observed AI exposure.")
+
+    if automation_score is not None:
+        if automation_score >= 75:
+            narrative.append("Its automation chance is high relative to other occupations.")
+        elif automation_score >= 40:
+            narrative.append("Its automation chance is moderate relative to other occupations.")
+        else:
+            narrative.append("Its automation chance is on the lower side of the dataset.")
+
+    if opportunity_score is not None:
+        if opportunity_score >= 70:
+            narrative.append("Salary and outlook indicators are comparatively strong.")
+        elif opportunity_score >= 45:
+            narrative.append("Salary and outlook indicators are mixed but not weak.")
+        else:
+            narrative.append("Salary and outlook indicators are relatively weak compared with other occupations.")
+
+    return {
+        "title": row["title"],
+        "job_family": row["JobFamily"],
+        "major_group_title": row["major_group_title"],
+        "salary": float(row["MedianSalaryAnnualized"]) if pd.notna(row["MedianSalaryAnnualized"]) else None,
+        "forecast": float(row["JobForecast"]) if pd.notna(row["JobForecast"]) else None,
+        "observed_exposure": float(row["observed_exposure"]) if pd.notna(row["observed_exposure"]) else None,
+        "automation_chance": float(row["ChanceAutoClean"]) if pd.notna(row["ChanceAutoClean"]) else None,
+        "bright_label": row["BrightLabel"],
+        "green_label": row["GreenLabel"],
+        "job_zone_label": row["JobZoneLabel"],
+        "profile_label": profile_label,
+        "score_df": score_df,
+        "narrative": narrative,
+    }

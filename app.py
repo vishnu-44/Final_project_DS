@@ -5,9 +5,11 @@ import plotly.express as px
 import streamlit as st
 
 from src.occupation_analysis import build_occupation_dataset
+from src.occupation_analysis import build_career_profile
 from src.occupation_analysis import dataset_story
 from src.occupation_analysis import get_data_quality_summary
 from src.occupation_analysis import get_numeric_summary
+from src.occupation_analysis import run_group_t_test
 from src.occupation_analysis import run_t_test
 from src.occupation_analysis import train_exposure_model
 from src.occupation_analysis import train_salary_model
@@ -18,6 +20,34 @@ PLOT_TEMPLATE = "plotly_white"
 
 st.set_page_config(page_title="Occupation AI Exposure Dashboard", layout="wide")
 
+st.markdown(
+    """
+    <style>
+    .profile-card {
+        background: rgba(255, 255, 255, 0.6);
+        border: 1px solid rgba(15, 23, 42, 0.08);
+        border-radius: 12px;
+        padding: 0.85rem 1rem;
+        min-height: 118px;
+    }
+    .profile-card-label {
+        font-size: 0.9rem;
+        color: #475569;
+        margin-bottom: 0.35rem;
+    }
+    .profile-card-value {
+        font-size: 1.2rem;
+        font-weight: 600;
+        color: #0f172a;
+        line-height: 1.25;
+        word-break: break-word;
+        overflow-wrap: anywhere;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 
 def metric_value(value, decimals=3):
     if value is None or pd.isna(value):
@@ -26,6 +56,19 @@ def metric_value(value, decimals=3):
         fmt = "{:,.%df}" % decimals
         return fmt.format(value)
     return "{:,}".format(value)
+
+
+def render_profile_card(label, value):
+    display_value = value if value not in [None, ""] else "N/A"
+    st.markdown(
+        """
+        <div class="profile-card">
+            <div class="profile-card-label">{}</div>
+            <div class="profile-card-value">{}</div>
+        </div>
+        """.format(label, display_value),
+        unsafe_allow_html=True,
+    )
 
 
 @st.cache_data
@@ -127,6 +170,8 @@ tabs = st.tabs(
         "Hypothesis Test",
         "ML: Exposure Classification",
         "ML: Salary Regression",
+        "Career Insight",
+        "Definitions",
     ]
 )
 
@@ -231,16 +276,25 @@ with tabs[1]:
         st.plotly_chart(scatter_fig, use_container_width=True)
 
     with mid_right:
-        auto_scatter = px.scatter(
-            filtered_df.dropna(subset=["ChanceAutoClean"]),
-            x="ChanceAutoClean",
-            y="observed_exposure",
-            color="JobFamily",
-            hover_name="title",
-            title="Automation chance vs observed AI exposure",
-            template=PLOT_TEMPLATE,
+        auto_rank = (
+            filtered_df.dropna(subset=["ChanceAutoClean"])
+            .sort_values("ChanceAutoClean", ascending=False)
+            .head(12)
+            .copy()
         )
-        st.plotly_chart(auto_scatter, use_container_width=True)
+        auto_rank_fig = px.bar(
+            auto_rank.sort_values("ChanceAutoClean"),
+            x="ChanceAutoClean",
+            y="title",
+            orientation="h",
+            color="observed_exposure",
+            hover_data=["JobFamily", "MedianSalaryAnnualized", "ExposureGroup"],
+            title="Top occupations by automation chance, colored by AI exposure",
+            template=PLOT_TEMPLATE,
+            color_continuous_scale="Sunsetdark",
+        )
+        auto_rank_fig.update_layout(yaxis_title="Occupation", xaxis_title="Automation chance")
+        st.plotly_chart(auto_rank_fig, use_container_width=True)
 
     low_left, low_right = st.columns(2)
     with low_left:
@@ -287,6 +341,7 @@ with tabs[1]:
         st.dataframe(zero_exposed, use_container_width=True)
 
 with tabs[2]:
+    st.markdown("**Hypothesis 1: salary and AI exposure**")
     st.markdown(
         "**Research question:** Do occupations with positive observed AI exposure have a different mean annualized salary than occupations with no observed AI exposure?"
     )
@@ -336,6 +391,62 @@ with tabs[2]:
         template=PLOT_TEMPLATE,
     )
     st.plotly_chart(compare_fig, use_container_width=True)
+
+    st.markdown("---")
+    st.markdown("**Hypothesis 2: automation chance and AI exposure**")
+    st.markdown(
+        "**Research question:** Do occupations with positive observed AI exposure have a different mean automation chance than occupations with no observed AI exposure?"
+    )
+    st.markdown(
+        "`H0`: The mean automation chance is the same for no-exposure and positive-exposure occupations.  "
+        "`Ha`: The mean automation chance is different for the two groups."
+    )
+
+    auto_test_results = run_group_t_test(
+        filtered_df,
+        "ChanceAutoClean",
+        "automation chance",
+    )
+
+    a1, a2, a3, a4 = st.columns(4)
+    a1.metric("Mean No Exposure", metric_value(auto_test_results.get("mean_no"), 2))
+    a2.metric("Mean Positive Exposure", metric_value(auto_test_results.get("mean_pos"), 2))
+    a3.metric("t-statistic", metric_value(auto_test_results.get("t_stat"), 4))
+    a4.metric("p-value", metric_value(auto_test_results.get("p_value"), 4))
+
+    b1, b2, b3 = st.columns(3)
+    b1.metric("No Exposure n", metric_value(auto_test_results.get("n_no"), 0))
+    b2.metric("Positive Exposure n", metric_value(auto_test_results.get("n_pos"), 0))
+    b3.metric("Effect Size", metric_value(auto_test_results.get("effect_size"), 4))
+
+    auto_assumptions = pd.DataFrame(
+        [
+            {"check": "Shapiro p-value (No Exposure)", "value": auto_test_results.get("normality_no")},
+            {"check": "Shapiro p-value (Positive Exposure)", "value": auto_test_results.get("normality_pos")},
+            {"check": "Levene p-value", "value": auto_test_results.get("variance_p")},
+        ]
+    )
+    st.dataframe(auto_assumptions, use_container_width=True)
+
+    auto_decision = (
+        "Reject H0"
+        if auto_test_results.get("p_value") is not None and auto_test_results["p_value"] < 0.05
+        else "Fail to reject H0"
+    )
+    st.markdown("**Decision:** {}".format(auto_decision))
+    st.write(auto_test_results.get("interpretation"))
+
+    auto_compare_fig = px.violin(
+        filtered_df.dropna(subset=["ChanceAutoClean"]),
+        x="ExposureGroup",
+        y="ChanceAutoClean",
+        color="ExposureGroup",
+        box=True,
+        points="all",
+        title="Automation chance by exposure group",
+        template=PLOT_TEMPLATE,
+    )
+    st.plotly_chart(auto_compare_fig, use_container_width=True)
 
 with tabs[3]:
     st.markdown("**ML model 1: classify whether an occupation has positive observed AI exposure**")
@@ -415,3 +526,137 @@ with tabs[4]:
     )
     if salary_interpretation:
         st.info(salary_interpretation)
+
+with tabs[5]:
+    st.markdown("**Career insight: what does this dataset suggest for a selected occupation?**")
+    st.caption(
+        "This section turns the dataset into an interpretable occupation profile using percentile-based scores, not a black-box recommendation."
+    )
+
+    occupation_options = sorted(filtered_df["title"].dropna().unique().tolist())
+    default_title = "Market Research Analysts and Marketing Specialists"
+    default_index = occupation_options.index(default_title) if default_title in occupation_options else 0
+    selected_title = st.selectbox("Select an occupation", occupation_options, index=default_index)
+
+    profile = build_career_profile(df, selected_title)
+    if profile is None:
+        st.warning("Could not build a profile for the selected occupation.")
+    else:
+        p1, p2 = st.columns(2)
+        with p1:
+            render_profile_card("Profile", profile["profile_label"])
+        with p2:
+            render_profile_card("Job Family", profile["job_family"])
+
+        p3, p4 = st.columns(2)
+        with p3:
+            render_profile_card("Observed Exposure", metric_value(profile["observed_exposure"], 4))
+        with p4:
+            render_profile_card("Automation Chance", metric_value(profile["automation_chance"], 1))
+
+        d1, d2 = st.columns(2)
+        with d1:
+            render_profile_card("Annualized Salary", "${}".format(metric_value(profile["salary"], 0)))
+        with d2:
+            render_profile_card("Job Zone", profile["job_zone_label"])
+
+        d3, d4 = st.columns(2)
+        with d3:
+            render_profile_card("Bright Outlook", profile["bright_label"])
+        with d4:
+            render_profile_card("Green Flag", profile["green_label"])
+
+        score_fig = px.bar(
+            profile["score_df"].dropna().sort_values("score"),
+            x="score",
+            y="score_type",
+            orientation="h",
+            color="score",
+            template=PLOT_TEMPLATE,
+            title="Occupation scorecard on a 0 to 100 relative scale",
+            color_continuous_scale="Tealgrn",
+            range_x=[0, 100],
+        )
+        score_fig.update_layout(xaxis_title="Relative score within dataset", yaxis_title="")
+        st.plotly_chart(score_fig, use_container_width=True)
+
+        st.markdown("**How to read this profile**")
+        for sentence in profile["narrative"]:
+            st.write("- {}".format(sentence))
+
+        st.markdown(
+            "**Interpretation:** This profile combines AI exposure and automation chance into an `AI disruption` score, and combines salary, forecast, and bright-outlook status into a `Career opportunity` score."
+        )
+
+with tabs[6]:
+    st.markdown("**Definitions used across the project**")
+    definitions_df = pd.DataFrame(
+        [
+            {
+                "Term": "observed_exposure",
+                "Meaning": "Anthropic's occupation-level AI exposure score. Higher values mean the occupation appears more connected to AI-related task activity.",
+            },
+            {
+                "Term": "Positive Exposure",
+                "Meaning": "Occupations with observed_exposure greater than 0.",
+            },
+            {
+                "Term": "No Exposure",
+                "Meaning": "Occupations with observed_exposure equal to 0.",
+            },
+            {
+                "Term": "ChanceAuto / ChanceAutoClean",
+                "Meaning": "Automation-chance score from the wage dataset. Higher values mean higher automation risk. The cleaned version treats -1 as unknown.",
+            },
+            {
+                "Term": "JobForecast",
+                "Meaning": "Projected job demand or expected future openings indicator from the wage dataset.",
+            },
+            {
+                "Term": "Bright Outlook / BrightLabel",
+                "Meaning": "A label indicating whether the occupation is expected to grow quickly or have many openings.",
+            },
+            {
+                "Term": "Green / GreenLabel",
+                "Meaning": "A label indicating whether the occupation is connected to green-economy or environmental work.",
+            },
+            {
+                "Term": "JobZone / JobZoneLabel",
+                "Meaning": "O*NET preparation level based on education, training, and experience needed for the occupation.",
+            },
+            {
+                "Term": "ExposureIntensity",
+                "Meaning": "A grouped label showing whether positive exposure is low, medium, or high relative to other exposed occupations.",
+            },
+            {
+                "Term": "MedianSalaryAnnualized",
+                "Meaning": "Salary used in the project after converting hourly-looking wage values into annual salary when needed.",
+            },
+            {
+                "Term": "major_group_title",
+                "Meaning": "The official broad SOC occupation group, used to place jobs into larger labor-market categories.",
+            },
+            {
+                "Term": "AI disruption score",
+                "Meaning": "A percentile-based score in the Career Insight tab combining AI exposure and automation chance.",
+            },
+            {
+                "Term": "Career opportunity score",
+                "Meaning": "A percentile-based score in the Career Insight tab combining salary strength, job forecast, and bright-outlook status.",
+            },
+        ]
+    )
+    st.dataframe(definitions_df, use_container_width=True, hide_index=True)
+
+    st.markdown("**Job zone guide**")
+    zone_df = pd.DataFrame(
+        [
+            {"Job Zone": "Zone 1", "Meaning": "Little preparation"},
+            {"Job Zone": "Zone 2", "Meaning": "Some preparation"},
+            {"Job Zone": "Zone 3", "Meaning": "Medium preparation"},
+            {"Job Zone": "Zone 4", "Meaning": "Considerable preparation"},
+            {"Job Zone": "Zone 5", "Meaning": "Extensive preparation"},
+            {"Job Zone": "Unknown", "Meaning": "Missing or invalid value in the raw source"},
+        ]
+    )
+    st.dataframe(zone_df, use_container_width=True, hide_index=True)

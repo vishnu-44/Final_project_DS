@@ -1,0 +1,160 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{setspace}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{hyperref}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{float}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=black,
+  urlcolor=blue
+}
+
+\setstretch{1.15}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.75em}
+
+\title{Occupation Level AI Exposure Analysis}
+\author{Final Project}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section*{Introduction}
+
+This project studies how artificial intelligence exposure varies across occupations. The main goal was to build a clear occupation level dataset and use it to understand whether jobs with observed AI exposure differ in salary, automation risk, and labor market characteristics. The analysis combines Anthropic Economic Index data with occupation metadata so that the final result is easier to interpret than a task only analysis.
+
+The project was designed around one simple question: which occupations appear more exposed to AI, and what characteristics make those occupations different from the rest of the labor market? To answer that question, we performed exploratory data analysis, conducted a two sample t test, built a classification model to predict exposure, and built a regression model to predict salary.
+
+\section*{Data Source and Dataset Construction}
+
+The project uses three source files from Anthropic's Economic Index repository on Hugging Face. The first file, \texttt{job\_exposure.csv}, provides the occupation level variable \texttt{observed\_exposure}. This is the core AI related measure in the project. The second file, \texttt{wage\_data.csv}, provides occupation metadata such as salary, job family, job zone, bright outlook status, green occupation status, job forecast, and automation chance. The third file, \texttt{SOC\_Structure.csv}, provides official occupation hierarchy information, which we used to attach major occupation group labels.
+
+To keep the final dataset clean, we used a one occupation per row structure. From the wage file, we kept only canonical occupation rows whose \texttt{SOCcode} ended with \texttt{.00}. That decision reduced duplication and avoided averaging across sub specializations that belonged to the same broader occupation code. We then matched the occupation codes from the exposure file and joined the major occupation labels from the SOC file.
+
+The final merged dataset contains \textbf{672 rows} and \textbf{25 columns} after adding derived variables. In this final dataset, each row represents one occupation.
+
+\section*{Data Preparation}
+
+Before analysis, several cleaning steps were applied. Median salary values smaller than 100 were treated as hourly wages and converted into annualized salary using 2080 work hours per year. Automation values of \texttt{-1} were treated as unknown rather than valid scores. Job zone values of \texttt{-1} were also treated as unknown. Missing wage group values were filled with the label \texttt{Unspecified}. In addition, readable versions of several variables were created, including job zone labels, bright outlook labels, green occupation labels, exposure group, and exposure intensity.
+
+The final dataset contains the following high value derived variables:
+
+\begin{longtable}{p{0.28\textwidth} p{0.64\textwidth}}
+\toprule
+Variable & Meaning \\
+\midrule
+\endhead
+\texttt{MedianSalaryAnnualized} & Salary measure used throughout the analysis after converting hourly values when needed \\
+\texttt{ChanceAutoClean} & Automation score after removing invalid placeholder values \\
+\texttt{JobZoneLabel} & Human readable version of O*NET preparation level \\
+\texttt{ExposureGroup} & Two group variable with values No Exposure and Positive Exposure \\
+\texttt{ExposureIntensity} & Four level variable describing no, low, medium, and high positive exposure \\
+\texttt{BrightLabel} & Human readable label for bright outlook occupations \\
+\texttt{GreenLabel} & Human readable label for green occupations \\
+\bottomrule
+\end{longtable}
+
+\section*{Preliminary Analysis}
+
+The merged dataset has 672 occupations and 25 columns. The mean observed exposure is approximately \textbf{0.0700}. About \textbf{44.2\%} of occupations fall into the positive exposure group, while the remaining occupations have zero observed exposure in the dataset.
+
+The mean annualized salary across all occupations is about \textbf{\$55,053}. When the data is divided by exposure group, occupations with no exposure have an average annualized salary of about \textbf{\$48,990}, while occupations with positive exposure have an average annualized salary of about \textbf{\$62,708}. This difference was large enough to motivate a formal hypothesis test.
+
+The average automation chance also differed across the groups. Occupations with no exposure had a mean automation score of about \textbf{60.19}, while occupations with positive exposure had a lower mean of about \textbf{43.61}. This is an interesting early sign that AI exposure and automation risk are not the same concept.
+
+\section*{Exploratory Data Analysis}
+
+The first part of the exploratory analysis focused on the distribution of exposure across occupation groups. The strongest exposure appeared in knowledge intensive and information oriented jobs. The job families with the highest mean observed exposure were Computer and Mathematical occupations, Sales and Related occupations, Legal occupations, Office and Administrative Support occupations, and Business and Financial Operations occupations.
+
+The most exposed individual occupations were Customer Service Representatives, Data Entry Keyers, Market Research Analysts and Marketing Specialists, Medical Transcriptionists, and Sales Representatives in wholesale and manufacturing roles. These results suggest that AI exposure is concentrated in occupations where communication, information handling, writing, and structured analysis are common.
+
+Another clear pattern appeared when salary was compared with exposure. The simple correlation between observed exposure and annualized salary was positive, although not extremely large, at about \textbf{0.169}. This suggests that more exposed occupations tend to be somewhat higher paid. At the same time, the correlation between salary and automation chance was negative, around \textbf{-0.530}, which suggests that the occupations with higher salaries tend to have lower automation scores.
+
+Job preparation level also mattered. Occupations in Job Zone 4 and Job Zone 5 showed the highest mean exposure values, while Job Zone 1 and Job Zone 2 occupations showed much lower exposure. This pattern supports the idea that jobs requiring more preparation, specialized training, or stronger cognitive work are more likely to appear in the positive exposure group.
+
+Overall, the EDA suggests three main takeaways. First, AI exposure is concentrated in professional and information rich occupations. Second, positive exposure is associated with higher salary rather than lower salary. Third, exposure and automation are related but not identical, since higher exposure occupations often had lower automation scores on average.
+
+\section*{Hypothesis Test}
+
+The main research question for the hypothesis test was:
+
+\textit{Do occupations with positive observed AI exposure have a different mean annualized salary than occupations with no observed AI exposure?}
+
+The null hypothesis was that the mean annualized salary is the same in the two groups. The alternative hypothesis was that the mean annualized salary is different.
+
+We used a two sample t test because the goal was to compare the mean salary of two independent groups. In the Streamlit app, the test also reports assumption checks for normality and equality of variance, along with the effect size. The descriptive results already suggest a notable group difference, since the positive exposure group has a much larger average salary than the no exposure group.
+
+For the final PDF version of this report, the exact t statistic, p value, and effect size can be taken directly from the Hypothesis Test tab in the app after the final run. The important interpretation is that the test was designed to determine whether the salary gap between the two exposure groups is statistically meaningful rather than due to random variation in the sample.
+
+\section*{Machine Learning}
+
+This project uses two supervised learning models.
+
+\subsection*{Model 1: Exposure Classification}
+
+The first model predicts whether an occupation belongs to the positive exposure group. This is a classification task. The target variable is binary, with one class for occupations with no observed exposure and another class for occupations with positive observed exposure.
+
+The features used in this model are job family, major occupation group, bright outlook status, green occupation status, job zone, annualized salary, job forecast, automation chance, and wage group. A random forest classifier was used because it can handle mixed feature types well and produces feature importance values that are easy to explain during a presentation.
+
+The purpose of this model is not only prediction. It also helps identify which job characteristics are most useful for distinguishing between more exposed and less exposed occupations.
+
+\subsection*{Model 2: Salary Regression}
+
+The second model predicts annualized salary. This is a regression task. The target variable is \texttt{MedianSalaryAnnualized}. The features include \texttt{observed\_exposure} together with job family, major occupation group, bright outlook status, green occupation status, job zone, job forecast, automation chance, and wage group.
+
+We used linear regression here because interpretability matters. Unlike a black box regression model, linear regression lets us examine coefficients directly. In the app, the salary regression tab shows the model fit using \(R^2\), mean absolute error, and root mean squared error. It also shows the regression coefficients and the coefficient p values.
+
+The p values are useful because they show whether a coefficient is statistically significant after accounting for the other predictors in the model. This is especially important for \texttt{observed\_exposure}, since the main substantive question is whether AI exposure is meaningfully associated with salary once other occupation characteristics are included.
+
+In the app, the salary regression section explicitly reports the coefficient for \texttt{observed\_exposure} and its p value. This allows the final interpretation to go beyond simple correlation. The correct wording is that higher exposure is \textit{associated with} higher or lower predicted salary, holding the other included variables constant. It should not be described as direct causation.
+
+\section*{Streamlit Application}
+
+The project is presented through a Streamlit dashboard. The main app file is \texttt{app.py}, which controls the user interface, filtering, and visualization layout. The supporting analysis code is contained in \texttt{src/occupation\_analysis.py}, which handles data construction, cleaning, summary statistics, hypothesis testing, and machine learning.
+
+The app is organized into five tabs:
+
+\begin{longtable}{p{0.28\textwidth} p{0.64\textwidth}}
+\toprule
+Tab & Purpose \\
+\midrule
+\endhead
+Summary & Shows data quality, summary statistics, exposure group counts, and a quick overview of top exposed families \\
+EDA & Shows the main visual analysis including group comparisons, scatter plots, heatmap, and ranked occupations \\
+Hypothesis Test & Shows the t test setup, assumptions, p value, and interpretation \\
+ML: Exposure Classification & Shows the random forest classification metrics, confusion matrix, and feature importance \\
+ML: Salary Regression & Shows the regression fit, largest coefficients, coefficient p values, and interpretation of the exposure coefficient \\
+\bottomrule
+\end{longtable}
+
+This structure makes the app easy to present in a short demo because the analysis moves in a natural order from understanding the data to interpreting the statistical and machine learning results.
+
+\section*{Conclusion}
+
+This project shows that occupation level AI exposure can be studied in a clean and interpretable way by combining Anthropic's exposure data with labor market metadata. The exploratory analysis suggests that exposure is concentrated in occupations involving information processing, communication, analysis, and knowledge work. It also suggests that positive exposure tends to be associated with higher salary and lower automation chance on average.
+
+The hypothesis test formalizes the salary comparison between exposed and non exposed occupations. The classification model helps identify the traits of occupations that are more likely to be exposed. The regression model goes a step further by asking how salary is associated with exposure while accounting for the rest of the observed job characteristics.
+
+Taken together, the results support a more nuanced interpretation of AI in the labor market. The occupations most exposed to AI are not necessarily the same occupations with the highest automation risk. Instead, the evidence in this project suggests that AI exposure is especially visible in jobs where information rich and cognitively demanding work is already common.
+
+\section*{References}
+
+Anthropic Economic Index. \url{https://huggingface.co/datasets/Anthropic/EconomicIndex}
+
+Anthropic labor market impacts report. \url{https://www.anthropic.com/research/labor-market-impacts}
+
+O*NET Online. \url{https://www.onetonline.org/}
+
+\end{document}
