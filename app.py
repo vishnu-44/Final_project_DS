@@ -18,6 +18,14 @@ from src.occupation_analysis import train_salary_model
 
 
 PLOT_TEMPLATE = "plotly_white"
+CHART_COLORWAY = [
+    "#183153",
+    "#C38B2F",
+    "#3F6C51",
+    "#B85C38",
+    "#6E7F99",
+    "#8B6F47",
+]
 
 
 st.set_page_config(page_title="Occupation AI Exposure Dashboard", layout="wide")
@@ -25,23 +33,146 @@ st.set_page_config(page_title="Occupation AI Exposure Dashboard", layout="wide")
 st.markdown(
     """
     <style>
-    .profile-card {
-        background: rgba(255, 255, 255, 0.6);
-        border: 1px solid rgba(15, 23, 42, 0.08);
-        border-radius: 12px;
+    :root {
+        --navy: #11294a;
+        --navy-soft: #1a3a64;
+        --brass: #c58e2f;
+        --brass-soft: #e3bf72;
+        --ink: #1d2733;
+        --muted: #667487;
+        --paper: #fbf7ef;
+        --panel: rgba(255, 255, 255, 0.86);
+        --panel-strong: rgba(255, 255, 255, 0.96);
+        --sage: #dfe7d7;
+        --line: rgba(17, 41, 74, 0.10);
+        --shadow: 0 18px 40px rgba(17, 41, 74, 0.08);
+        --radius: 18px;
+    }
+    .stApp {
+        background:
+            radial-gradient(circle at top left, rgba(197, 142, 47, 0.12), transparent 28%),
+            radial-gradient(circle at top right, rgba(63, 108, 81, 0.12), transparent 24%),
+            linear-gradient(180deg, #f8f3e8 0%, #f3efe6 48%, #eef3eb 100%);
+    }
+    [data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #f3ecde 0%, #e6efe6 100%);
+        border-right: 1px solid rgba(17, 41, 74, 0.10);
+    }
+    [data-testid="stSidebar"] > div:first-child {
+        padding-top: 1.4rem;
+    }
+    .block-container {
+        padding-top: 1.4rem;
+        padding-bottom: 2.5rem;
+    }
+    h1, h2, h3 {
+        font-family: Georgia, "Times New Roman", serif;
+        color: var(--navy);
+        letter-spacing: -0.02em;
+    }
+    .hero-shell {
+        background: linear-gradient(135deg, rgba(17, 41, 74, 0.98) 0%, rgba(24, 49, 83, 0.94) 58%, rgba(63, 108, 81, 0.92) 100%);
+        border: 1px solid rgba(197, 142, 47, 0.25);
+        border-radius: 24px;
+        box-shadow: var(--shadow);
+        color: #fdf9f0;
+        margin-bottom: 1.15rem;
+        overflow: hidden;
+        padding: 1.35rem 1.45rem 1.2rem;
+        position: relative;
+    }
+    .hero-shell::after {
+        content: "";
+        position: absolute;
+        inset: auto -8% -30% auto;
+        width: 280px;
+        height: 280px;
+        background: radial-gradient(circle, rgba(227, 191, 114, 0.23), transparent 62%);
+    }
+    .hero-kicker {
+        color: var(--brass-soft);
+        font-size: 0.83rem;
+        font-weight: 700;
+        letter-spacing: 0.16em;
+        margin-bottom: 0.55rem;
+        text-transform: uppercase;
+    }
+    .hero-title {
+        color: #fffaf2;
+        font-family: Georgia, "Times New Roman", serif;
+        font-size: 2.35rem;
+        font-weight: 700;
+        line-height: 1.05;
+        margin: 0 0 0.45rem 0;
+        max-width: 760px;
+    }
+    .hero-subtitle {
+        color: rgba(253, 249, 240, 0.86);
+        font-size: 1rem;
+        line-height: 1.55;
+        margin: 0;
+        max-width: 820px;
+    }
+    .section-note {
+        background: linear-gradient(180deg, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.88) 100%);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        box-shadow: var(--shadow);
+        color: var(--muted);
+        margin: 0.3rem 0 1rem;
         padding: 0.85rem 1rem;
+    }
+    div[data-testid="stMetric"] {
+        background: linear-gradient(180deg, var(--panel-strong) 0%, rgba(255, 255, 255, 0.84) 100%);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        box-shadow: var(--shadow);
+        padding: 0.75rem 0.95rem;
+    }
+    div[data-testid="stMetric"] label {
+        color: var(--muted);
+        font-weight: 600;
+    }
+    div[data-testid="stMetricValue"] {
+        color: var(--navy);
+        font-family: Georgia, "Times New Roman", serif;
+    }
+    div[data-testid="stTabs"] button {
+        border-radius: 999px;
+        padding: 0.45rem 0.95rem;
+    }
+    div[data-testid="stTabs"] button[aria-selected="true"] {
+        background: linear-gradient(180deg, rgba(17, 41, 74, 0.96) 0%, rgba(26, 58, 100, 0.96) 100%);
+        color: #fff9f0;
+    }
+    div[data-testid="stExpander"] {
+        border-radius: 16px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.72);
+        box-shadow: var(--shadow);
+    }
+    div[data-testid="stInfo"], div[data-testid="stWarning"], div[data-testid="stSuccess"], div[data-testid="stError"] {
+        border-radius: 14px;
+    }
+    .profile-card {
+        background: linear-gradient(180deg, var(--panel-strong) 0%, rgba(255, 255, 255, 0.88) 100%);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+        padding: 0.95rem 1rem;
         min-height: 118px;
     }
     .profile-card-label {
+        color: var(--muted);
         font-size: 0.9rem;
-        color: #475569;
-        margin-bottom: 0.35rem;
+        font-weight: 600;
+        margin-bottom: 0.45rem;
     }
     .profile-card-value {
-        font-size: 1.2rem;
-        font-weight: 600;
-        color: #0f172a;
-        line-height: 1.25;
+        color: var(--navy);
+        font-size: 1.05rem;
+        font-weight: 700;
+        line-height: 1.35;
         word-break: break-word;
         overflow-wrap: anywhere;
     }
@@ -79,6 +210,42 @@ def render_profile_card(label, value):
         """.format(label, display_value),
         unsafe_allow_html=True,
     )
+
+
+def render_section_note(text):
+    st.markdown(
+        '<div class="section-note">{}</div>'.format(text),
+        unsafe_allow_html=True,
+    )
+
+
+def style_figure(fig):
+    fig.update_layout(
+        paper_bgcolor="rgba(255,255,255,0)",
+        plot_bgcolor="rgba(255,255,255,0.82)",
+        font=dict(color="#1d2733", family="Georgia, Times New Roman, serif"),
+        colorway=CHART_COLORWAY,
+        margin=dict(l=20, r=20, t=60, b=20),
+        title=dict(font=dict(size=20, color="#11294a")),
+        legend=dict(
+            bgcolor="rgba(255,255,255,0.72)",
+            bordercolor="rgba(17,41,74,0.12)",
+            borderwidth=1,
+        ),
+    )
+    fig.update_xaxes(
+        showgrid=True,
+        gridcolor="rgba(17,41,74,0.08)",
+        zeroline=False,
+        linecolor="rgba(17,41,74,0.12)",
+    )
+    fig.update_yaxes(
+        showgrid=True,
+        gridcolor="rgba(17,41,74,0.08)",
+        zeroline=False,
+        linecolor="rgba(17,41,74,0.12)",
+    )
+    return fig
 
 
 def generate_llm_automation_assessment(profile, transition_options, model_name):
@@ -169,9 +336,18 @@ def get_salary_model_outputs(df):
     return train_salary_model(df)
 
 
-st.title("Occupation-Level AI Exposure Dashboard")
-st.caption(
-    "A clean occupation-focused analysis of observed AI exposure, salary, outlook, job preparation, and automation risk."
+st.markdown(
+    """
+    <div class="hero-shell">
+        <div class="hero-kicker">Anthropic Economic Index Dashboard</div>
+        <div class="hero-title">Occupation-Level AI Exposure</div>
+        <p class="hero-subtitle">
+            An interactive labor-market view of observed AI exposure, salary patterns, automation risk,
+            outlook, and occupation structure across a cleaned one-row-per-occupation dataset.
+        </p>
+    </div>
+    """,
+    unsafe_allow_html=True,
 )
 
 with st.expander("What the main terms mean", expanded=False):
@@ -216,6 +392,9 @@ if filtered_df.empty:
 story = dataset_story(filtered_df)
 
 st.subheader("Overview")
+render_section_note(
+    "The overview reflects the currently filtered occupations. Use the sidebar to narrow the analysis by job family, exposure group, or job zone without changing the underlying models."
+)
 m1, m2, m3, m4, m5 = st.columns(5)
 m1.metric("Occupations", metric_value(len(filtered_df), 0))
 m2.metric("Avg Exposure", metric_value(filtered_df["observed_exposure"].mean(), 4))
@@ -260,6 +439,9 @@ tabs = st.tabs(
 
 with tabs[0]:
     st.markdown("**Data validation and summary**")
+    render_section_note(
+        "This tab establishes the structure of the merged dataset before deeper analysis. It shows column quality, descriptive statistics, and the broad shape of exposure across groups and families."
+    )
     validation_left, validation_right = st.columns(2)
     with validation_left:
         st.dataframe(get_data_quality_summary(filtered_df), use_container_width=True, height=320)
@@ -278,6 +460,7 @@ with tabs[0]:
             title="Exposure group counts",
             template=PLOT_TEMPLATE,
         )
+        style_figure(summary_fig)
         st.plotly_chart(summary_fig, use_container_width=True)
 
     with summary_right:
@@ -298,10 +481,14 @@ with tabs[0]:
             template=PLOT_TEMPLATE,
             color_continuous_scale="Tealgrn",
         )
+        style_figure(family_preview_fig)
         st.plotly_chart(family_preview_fig, use_container_width=True)
 
 with tabs[1]:
     st.markdown("**Exploratory Data Analysis**")
+    render_section_note(
+        "These visuals look for patterns rather than formal conclusions. The goal is to see where AI exposure clusters and how it moves with salary, automation risk, preparation level, and occupation grouping."
+    )
     top_left, top_right = st.columns(2)
     with top_left:
         family_exposure = (
@@ -321,6 +508,7 @@ with tabs[1]:
             color_continuous_scale="Tealgrn",
         )
         family_fig.update_layout(yaxis={"categoryorder": "total ascending"})
+        style_figure(family_fig)
         st.plotly_chart(family_fig, use_container_width=True)
 
     with top_right:
@@ -341,6 +529,7 @@ with tabs[1]:
             template=PLOT_TEMPLATE,
             color_continuous_scale="Viridis",
         )
+        style_figure(major_fig)
         st.plotly_chart(major_fig, use_container_width=True)
 
     mid_left, mid_right = st.columns(2)
@@ -356,6 +545,7 @@ with tabs[1]:
             title="Salary vs observed AI exposure",
             template=PLOT_TEMPLATE,
         )
+        style_figure(scatter_fig)
         st.plotly_chart(scatter_fig, use_container_width=True)
 
     with mid_right:
@@ -377,6 +567,7 @@ with tabs[1]:
             color_continuous_scale="Sunsetdark",
         )
         auto_rank_fig.update_layout(yaxis_title="Occupation", xaxis_title="Automation chance")
+        style_figure(auto_rank_fig)
         st.plotly_chart(auto_rank_fig, use_container_width=True)
 
     low_left, low_right = st.columns(2)
@@ -390,6 +581,7 @@ with tabs[1]:
             title="Salary by exposure group",
             template=PLOT_TEMPLATE,
         )
+        style_figure(exposure_box)
         st.plotly_chart(exposure_box, use_container_width=True)
 
     with low_right:
@@ -406,6 +598,7 @@ with tabs[1]:
             aspect="auto",
             title="Average exposure by job family and job zone",
         )
+        style_figure(heat_fig)
         st.plotly_chart(heat_fig, use_container_width=True)
 
     rank_left, rank_right = st.columns(2)
@@ -425,6 +618,9 @@ with tabs[1]:
 
 with tabs[2]:
     st.markdown("**Hypothesis 1: salary and AI exposure**")
+    render_section_note(
+        "The hypothesis tab moves from descriptive patterns to statistical inference. Each test compares exposed and non-exposed occupations and asks whether the mean difference is large enough to treat as statistically meaningful."
+    )
     st.markdown(
         "**Research question:** Do occupations with positive observed AI exposure have a different mean annualized salary than occupations with no observed AI exposure?"
     )
@@ -472,6 +668,7 @@ with tabs[2]:
         title="Annualized salary by exposure group",
         template=PLOT_TEMPLATE,
     )
+    style_figure(compare_fig)
     st.plotly_chart(compare_fig, use_container_width=True)
 
     st.markdown("---")
@@ -527,10 +724,14 @@ with tabs[2]:
         title="Automation chance by exposure group",
         template=PLOT_TEMPLATE,
     )
+    style_figure(auto_compare_fig)
     st.plotly_chart(auto_compare_fig, use_container_width=True)
 
 with tabs[3]:
     st.markdown("**ML model 1: classify whether an occupation has positive observed AI exposure**")
+    render_section_note(
+        "This supervised classification model learns the profile of occupations that tend to fall into the positive-exposure group. The importance chart highlights which features were most useful to that separation."
+    )
     metrics, importance_df = get_model_outputs(df)
 
     ml1, ml2, ml3, ml4 = st.columns(4)
@@ -559,10 +760,14 @@ with tabs[3]:
             template=PLOT_TEMPLATE,
             color_continuous_scale="OrRd",
         )
+        style_figure(importance_fig)
         st.plotly_chart(importance_fig, use_container_width=True)
 
 with tabs[4]:
     st.markdown("**ML model 2: predict annualized salary with linear regression**")
+    render_section_note(
+        "This regression model is used both for prediction and interpretation. It estimates salary from occupation traits and shows how observed exposure is associated with salary once the other included variables are held constant."
+    )
     (
         salary_metrics,
         coef_df,
@@ -593,6 +798,7 @@ with tabs[4]:
             template=PLOT_TEMPLATE,
             color_continuous_scale="RdBu",
         )
+        style_figure(coef_fig)
         st.plotly_chart(coef_fig, use_container_width=True)
 
     exposure_text = (
@@ -612,6 +818,9 @@ with tabs[5]:
     st.markdown("**Career insight: what does this dataset suggest for a selected occupation?**")
     st.caption(
         "This section turns the dataset into an interpretable occupation profile using percentile-based scores, not a black-box recommendation."
+    )
+    render_section_note(
+        "The scorecard is relative to the occupations in this dataset. It is designed to make the analysis usable for a single occupation view without replacing the underlying source values."
     )
 
     occupation_options = sorted(filtered_df["title"].dropna().unique().tolist())
@@ -660,6 +869,7 @@ with tabs[5]:
             range_x=[0, 100],
         )
         score_fig.update_layout(xaxis_title="Relative score within dataset", yaxis_title="")
+        style_figure(score_fig)
         st.plotly_chart(score_fig, use_container_width=True)
 
         st.markdown("**How to read this profile**")
@@ -714,6 +924,9 @@ with tabs[5]:
 
 with tabs[6]:
     st.markdown("**Definitions used across the project**")
+    render_section_note(
+        "This tab is intentionally plain. It gives a reference for the project language so the dashboard remains readable to someone who did not build the dataset or the code."
+    )
     definitions_df = pd.DataFrame(
         [
             {

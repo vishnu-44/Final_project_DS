@@ -15,6 +15,8 @@ The app supports:
 - hypothesis testing
 - machine learning
 - an interactive presentation layer in Streamlit
+- a single-occupation career insight view
+- a definitions tab for non-technical readers
 
 ## Dataset Design
 
@@ -61,12 +63,19 @@ This produces a merged dataset with:
 
 ### Hypothesis Test
 
-Research question:
+Research question 1:
 
 **Do occupations with positive observed AI exposure have a different mean annualized salary than occupations with no observed AI exposure?**
 
 - `H0`: the mean annualized salary is the same in both groups
 - `Ha`: the mean annualized salary is different
+
+Research question 2:
+
+**Do occupations with positive observed AI exposure have a different mean automation chance than occupations with no observed AI exposure?**
+
+- `H0`: the mean automation chance is the same in both groups
+- `Ha`: the mean automation chance is different
 
 ### Machine Learning
 
@@ -83,6 +92,20 @@ Model 2: regression
 - includes `observed_exposure` as a direct predictor
 - used to interpret how AI exposure is associated with salary after accounting for the other included variables
 - includes coefficient p-values from an OLS fit for significance-based interpretation
+
+### Dashboard tabs
+
+The app is organized into seven tabs:
+
+- `Summary`
+- `EDA`
+- `Hypothesis Test`
+- `ML: Exposure Classification`
+- `ML: Salary Regression`
+- `Career Insight`
+- `Definitions`
+
+The current UI uses a custom visual layer on top of Streamlit with a warm light theme, styled metric cards, unified Plotly charts, and guided section notes so the dashboard is easier to present live.
 
 ## Repository Structure
 

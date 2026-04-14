@@ -7,3 +7,6 @@ venv/
 *.pyd
 data/*.csv
 !data/.gitkeep
+AGENTS.md
+.codex/
+.agents/
